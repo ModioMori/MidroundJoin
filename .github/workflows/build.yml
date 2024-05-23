@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Fetch DepotDownloader
+      uses: robinraju/release-downloader@v1.10
+      with:
+        repository: "SteamRE/DepotDownloader"
+        fileName: "depotdownloader-2.5.0.zip"
+        tag: "DepotDownloader_2.5.0"
+        extract: true
+
+    - name: Download Game Files
+      run: dotnet DepotDownloader.dll -app 2908480 -username "${{ secrets.STEAM_USER }}" -password "${{ secrets.STEAM_PASS }}" -dir "Gladio Mori"
+
+    - name: Fix Reference Paths
+      uses: jacobtomlinson/gha-find-replace@v3
+      with:
+        find: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Gladio Mori Demo"
+        replace: "Gladio Mori"
+        regex: false
+        include: "MidroundJoin.csproj"
+
+    - name: Build
+      run: |
+        dotnet build
+        dotnet build --configuration Release
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build
+        path: |
+          bin/Debug/netstandard2.1/MidroundJoin.dll
+          bin/Release/netstandard2.1/MidroundJoin.dll
