@@ -1,7 +1,6 @@
 ﻿using HarmonyLib;
 using System.Collections.Generic;
 using System.Linq;
-using System;
 using Mirror;
 using UnityEngine.SceneManagement;
 using UnityEngine;
@@ -39,17 +38,18 @@ namespace ModMidroundJoin {
 
 		[HarmonyPostfix,
 		 HarmonyPatch(typeof(NetworkServer), "AddPlayerForConnection",
-		              new Type[] { typeof(NetworkConnectionToClient), typeof(GameObject) })]
+		              new System.Type[] { typeof(NetworkConnectionToClient), typeof(GameObject) })]
 		private static void PendingPlayerHook(NetworkConnectionToClient conn, GameObject player) {
-			if (SceneManager.GetActiveScene().name != "LobbyMultiplayer") {
-				NetworkRoomManager.PendingPlayer PendingPlayer;
-				PendingPlayer.conn = conn;
-				PendingPlayer.roomPlayer = player;
+			if (SceneManager.GetActiveScene().name == "LobbyMultiplayer")
+				return;
 
-				MultiplayerRoomManager RoomManager =
-				    (MultiplayerRoomManager)NetworkRoomManager.singleton;
-				RoomManager.pendingPlayers.Add(PendingPlayer);
-			}
+			NetworkRoomManager RoomManager = (NetworkRoomManager)NetworkRoomManager.singleton;
+			MultiplayerRoomPlayer RoomPlayer = player.GetComponent<MultiplayerRoomPlayer>();
+			if (RoomPlayer == null)
+				return;
+
+			MidroundJoinPlugin.DeleteCharacterOnce[RoomPlayer.netId] = true;
+			RoomManager.SceneLoadedForPlayer(conn, player);
 		}
 
 		[HarmonyPrefix,
@@ -60,18 +60,37 @@ namespace ModMidroundJoin {
 			    roomPlayer.GetComponent<MultiplayerRoomPlayer>();
 			if (RoomPlayerComponent.selectedMoveSet != null &&
 			    (RoomPlayerComponent.selectedEquipment != null &&
-			     RoomPlayerComponent.selectedEquipment.Count > 0)) {
+			     RoomPlayerComponent.selectedEquipment.Count > 0))
 				return;
-			}
 
 			foreach (MoveSet Set in MoveSetHelpers.MoveSets) {
-				MidroundJoinPlugin.Log!.LogInfo(Set.name);
 				if (Set.name.Contains("Bardiche")) {
 					RoomPlayerComponent.selectedMoveSet = Set;
 					RoomPlayerComponent.selectedEquipment = Set.defaultEquipment;
 					break;
 				}
 			}
+		}
+
+		[HarmonyPostfix, HarmonyPatch(typeof(PlayerMultiplayerInputManager), "Start")]
+		private static void FixBrokenCharacterOnMidroundJoin(
+		    PlayerMultiplayerInputManager __instance, GameObject ___playerCharacter) {
+			if (__instance.multiplayerRoomPlayer == null)
+				return;
+
+			NetworkManager NetMan = NetworkManager.singleton;
+			if (NetMan != null && (NetMan.mode != NetworkManagerMode.Host &&
+			                       NetMan.mode != NetworkManagerMode.ServerOnly))
+				return;
+
+			if (!MidroundJoinPlugin.DeleteCharacterOnce.ContainsKey(
+			        __instance.multiplayerRoomPlayer.netId))
+				return;
+
+			MidroundJoinPlugin.DeleteCharacterOnce.Remove(__instance.multiplayerRoomPlayer.netId);
+			__instance.HandlePlayerDeath();
+			Object.Destroy(___playerCharacter.transform.Find("PlayerModelPhysics").gameObject);
+			Object.Destroy(___playerCharacter.transform.Find("PlayerModelAnimation").gameObject);
 		}
 	}
 }
