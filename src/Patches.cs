@@ -72,25 +72,31 @@ namespace ModMidroundJoin {
 			}
 		}
 
-		[HarmonyPostfix, HarmonyPatch(typeof(PlayerMultiplayerInputManager), "Start")]
-		private static void FixBrokenCharacterOnMidroundJoin(
-		    PlayerMultiplayerInputManager __instance, GameObject ___playerCharacter) {
-			if (__instance.multiplayerRoomPlayer == null)
-				return;
-
+		[HarmonyPostfix, HarmonyPatch(typeof(NetworkRoomManager), "SceneLoadedForPlayer")]
+		private static void FixBrokenCharacterOnMidroundJoin(NetworkConnectionToClient conn,
+		                                                     GameObject roomPlayer) {
 			NetworkManager NetMan = NetworkManager.singleton;
 			if (NetMan != null && (NetMan.mode != NetworkManagerMode.Host &&
 			                       NetMan.mode != NetworkManagerMode.ServerOnly))
 				return;
 
-			if (!MidroundJoinPlugin.DeleteCharacterOnce.ContainsKey(
-			        __instance.multiplayerRoomPlayer.netId))
+			MultiplayerRoomPlayer RoomPlayer = roomPlayer.GetComponent<MultiplayerRoomPlayer>();
+			if (RoomPlayer == null)
+				return;
+			if (conn.identity == null || conn.identity.gameObject == null)
+				return;
+			if (!MidroundJoinPlugin.DeleteCharacterOnce.ContainsKey(RoomPlayer.netId))
 				return;
 
-			MidroundJoinPlugin.DeleteCharacterOnce.Remove(__instance.multiplayerRoomPlayer.netId);
-			__instance.HandlePlayerDeath();
-			Object.Destroy(___playerCharacter.transform.Find("PlayerModelPhysics").gameObject);
-			Object.Destroy(___playerCharacter.transform.Find("PlayerModelAnimation").gameObject);
+			GameObject PlayerCharacter = conn.identity.gameObject;
+			PlayerMultiplayerInputManager InputManager =
+			    PlayerCharacter.GetComponent<PlayerMultiplayerInputManager>();
+
+			MidroundJoinPlugin.DeleteCharacterOnce.Remove(RoomPlayer.netId);
+			InputManager.HandlePlayerDeath();
+			NetworkServer.Destroy(PlayerCharacter.transform.Find("PlayerModelPhysics").gameObject);
+			NetworkServer.Destroy(
+			    PlayerCharacter.transform.Find("PlayerModelAnimation").gameObject);
 		}
 	}
 }
